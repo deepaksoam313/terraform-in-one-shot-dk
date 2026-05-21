@@ -1,0 +1,8 @@
+.terraform/
+**/.terraform/
+*.tfstate
+*.tfstate.*
+**/*.tfstate
+**/*.tfstate.*
+**/terra-key-ec2
+**/terra-key-ec2.pub
