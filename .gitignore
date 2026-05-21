@@ -7,4 +7,6 @@
 **/terra-key-ec2
 **/terra-key-ec2.pub
 
-*/.terraform.lock.hcl
+# Ignore dependency lock files everywhere (Fixes your issue)
+.terraform.lock.hcl
+**/.terraform.lock.hcl
