@@ -1,0 +1,48 @@
+# =============================================================================
+# aws-lbc-values.yaml
+# =============================================================================
+# Helm values for AWS Load Balancer Controller (AWS LBC).
+#
+# WHAT IS AWS LBC?
+#   A K8s controller that watches for Ingress resources with ALB annotations.
+#   When it sees one, it calls AWS APIs to create/manage the ALB.
+#
+# WITHOUT AWS LBC:
+#   K8s only knows how to create Classic ELBs (old, limited).
+#
+# WITH AWS LBC:
+#   K8s can create modern ALBs and NLBs with full feature support.
+#
+# INSTALL COMMAND:
+#   helm repo add eks https://aws.github.io/eks-charts
+#   helm repo update
+#   helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
+#     --namespace kube-system \
+#     -f aws-lbc-values.yaml
+#
+# VERIFY:
+#   kubectl get deployment -n kube-system aws-load-balancer-controller
+# =============================================================================
+
+# Your EKS cluster name — AWS LBC needs this to tag resources
+clusterName: nginx-ingress-demo-eks
+
+serviceAccount:
+  create: true
+  name: aws-load-balancer-controller
+  annotations:
+    # IRSA annotation — links this service account to the IAM role
+    # Get this ARN from: terraform output aws_lbc_role_arn
+    eks.amazonaws.com/role-arn: arn:aws:iam::<ACCOUNT_ID>:role/nginx-ingress-demo-aws-lbc-role
+
+# Run 2 replicas for HA — if one pod crashes, the other keeps managing ALBs
+replicaCount: 2
+
+# Resource limits — prevent AWS LBC from consuming too much node resources
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module type="JAVA_MODULE" version="4">
+  <component name="NewModuleRootManager" inherit-compiler-output="true">
+    <exclude-output />
+    <content url="file://$MODULE_DIR$">
+      <excludeFolder url="file://$MODULE_DIR$/EKS/.terraform" />
+      <excludeFolder url="file://$MODULE_DIR$/remote-infra/.terraform" />
+      <excludeFolder url="file://$MODULE_DIR$/terraform-basics/.terraform" />
+      <excludeFolder url="file://$MODULE_DIR$/terraform-basics/ec2_instance/.terraform" />
+      <excludeFolder url="file://$MODULE_DIR$/terraform-basics/s3_bucket/.terraform" />
+      <excludeFolder url="file://$MODULE_DIR$/GCP_Basics_313/.terraform" />
+      <excludeFolder url="file://$MODULE_DIR$/terraform-by-kiro/02-variables/.terraform" />
+      <excludeFolder url="file://$MODULE_DIR$/terraform-by-kiro/03-outputs/.terraform" />
+      <excludeFolder url="file://$MODULE_DIR$/terraform-by-kiro/04-data-sources/.terraform" />
+    </content>
+    <orderEntry type="inheritedJdk" />
+    <orderEntry type="sourceFolder" forTests="false" />
+  </component>
+</module>

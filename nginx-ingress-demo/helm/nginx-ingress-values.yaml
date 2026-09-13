@@ -1,0 +1,160 @@
+# =============================================================================
+# nginx-ingress-values.yaml
+# =============================================================================
+# Production-grade Helm values for Nginx Ingress Controller.
+#
+# WHAT THIS CONFIGURES:
+#   - 2 replicas (HA) spread across different nodes
+#   - NodePort service (ALB will forward traffic to this NodePort)
+#   - Prometheus metrics enabled
+#   - HPA for auto-scaling under load
+#   - Real client IP forwarding
+#   - Custom log format for better observability
+#   - Resource limits to prevent OOM
+#
+# INSTALL COMMAND:
+#   helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+#   helm repo update
+#   helm install ingress-nginx ingress-nginx/ingress-nginx \
+#     --namespace ingress-nginx \
+#     --create-namespace \
+#     -f nginx-ingress-values.yaml
+#
+# VERIFY:
+#   kubectl get pods -n ingress-nginx
+#   kubectl get svc -n ingress-nginx
+# =============================================================================
+
+controller:
+  # ---------------------------------------------------------------------------
+  # Replicas — always run at least 2 for HA in production
+  # ---------------------------------------------------------------------------
+  replicaCount: 2
+
+  # ---------------------------------------------------------------------------
+  # Service Type: NodePort
+  # ---------------------------------------------------------------------------
+  # We use NodePort instead of LoadBalancer because:
+  #   - ALB (created by AWS LBC) will forward traffic to this NodePort
+  #   - We don't need a separate NLB for Nginx
+  #   - ALB handles external traffic, Nginx handles internal routing
+  # ---------------------------------------------------------------------------
+  service:
+    type: NodePort
+    nodePorts:
+      http: 32080    # ALB target group will point to this port
+      https: 32443
+
+  # ---------------------------------------------------------------------------
+  # Nginx Global Config
+  # ---------------------------------------------------------------------------
+  config:
+    # Trust forwarded headers from ALB so Nginx sees real client IP
+    use-forwarded-headers: "true"
+    compute-full-forwarded-for: "true"
+
+    # Keep connections alive to upstream pods (reduces latency)
+    upstream-keepalive-connections: "200"
+    upstream-keepalive-time: "1h"
+
+    # Timeouts — adjust based on your app's response time
+    proxy-connect-timeout: "10"
+    proxy-read-timeout: "60"
+    proxy-send-timeout: "60"
+
+    # Return custom error pages for 5xx errors
+    # The default backend will serve these pages
+    # 500 = app bug/crash (originates inside pod)
+    # 505 = HTTP version not supported (Nginx itself returns this)
+    custom-http-errors: "500,502,503,504,505"
+
+    # Detailed log format for debugging — includes upstream info
+    log-format-upstream: >
+      $remote_addr - $remote_user [$time_local] "$request"
+      $status $body_bytes_sent "$http_referer" "$http_user_agent"
+      $request_length $request_time
+      [$proxy_upstream_name] [$proxy_alternative_upstream_name]
+      $upstream_addr $upstream_response_length
+      $upstream_response_time $upstream_status $req_id
+
+  # ---------------------------------------------------------------------------
+  # Resource Limits
+  # ---------------------------------------------------------------------------
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # ---------------------------------------------------------------------------
+  # Pod Anti-Affinity — spread pods across different nodes
+  # ---------------------------------------------------------------------------
+  # Ensures the 2 Nginx pods don't land on the same node.
+  # If one node goes down, the other Nginx pod on a different node keeps running.
+  # ---------------------------------------------------------------------------
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app.kubernetes.io/name
+                  operator: In
+                  values:
+                    - ingress-nginx
+            topologyKey: kubernetes.io/hostname
+
+  # ---------------------------------------------------------------------------
+  # Horizontal Pod Autoscaler
+  # ---------------------------------------------------------------------------
+  # Automatically scales Nginx pods when CPU/memory is high.
+  # Min 2 pods always running, max 10 during traffic spikes.
+  # ---------------------------------------------------------------------------
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 80
+    targetMemoryUtilizationPercentage: 80
+
+  # ---------------------------------------------------------------------------
+  # Prometheus Metrics
+  # ---------------------------------------------------------------------------
+  # Exposes /metrics endpoint for Prometheus to scrape.
+  # Key metrics: request rate, error rate, latency percentiles.
+  # ---------------------------------------------------------------------------
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true          # creates ServiceMonitor for Prometheus Operator
+      namespace: monitoring
+
+  # ---------------------------------------------------------------------------
+  # Pod Disruption Budget
+  # ---------------------------------------------------------------------------
+  # Ensures at least 1 Nginx pod is always running during node maintenance.
+  # Without this, kubectl drain could take down all Nginx pods at once.
+  # ---------------------------------------------------------------------------
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+# ---------------------------------------------------------------------------
+# Default Backend — serves custom error pages for 5xx errors
+# ---------------------------------------------------------------------------
+# When Nginx gets a 502/503/504 from upstream, it forwards to this backend.
+# We deploy a custom error page app here.
+# ---------------------------------------------------------------------------
+defaultBackend:
+  enabled: true
+  image:
+    repository: nginx
+    tag: "alpine"
+  replicaCount: 1
+  resources:
+    requests:
+      cpu: 10m
+      memory: 20Mi

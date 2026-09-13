@@ -1,0 +1,137 @@
+# =============================================================================
+# prometheus-values.yaml
+# =============================================================================
+# Helm values for kube-prometheus-stack (Prometheus + Grafana + Alertmanager).
+#
+# WHAT THIS INSTALLS:
+#   - Prometheus: scrapes metrics from Nginx Ingress, pods, nodes
+#   - Grafana: dashboards for visualizing metrics
+#   - Alertmanager: sends alerts to Slack/PagerDuty when things break
+#   - Node Exporter: node-level metrics (CPU, memory, disk)
+#   - kube-state-metrics: K8s object metrics (pod restarts, deployment status)
+#
+# KEY METRICS FOR NGINX INGRESS:
+#   nginx_ingress_controller_requests          → total requests by status code
+#   nginx_ingress_controller_request_duration  → latency percentiles (p50, p99)
+#   nginx_ingress_controller_response_size     → response sizes
+#   nginx_ingress_controller_upstream_latency  → time to reach upstream pod
+#
+# INSTALL COMMAND:
+#   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+#   helm repo update
+#   helm install prometheus prometheus-community/kube-prometheus-stack \
+#     --namespace monitoring \
+#     --create-namespace \
+#     -f prometheus-values.yaml
+#
+# ACCESS GRAFANA:
+#   kubectl port-forward -n monitoring svc/prometheus-grafana 3000:80
+#   Open: http://localhost:3000
+#   Login: admin / prom-operator (change this!)
+#
+# NGINX INGRESS DASHBOARD:
+#   Import Grafana dashboard ID: 9614
+#   This is the official Nginx Ingress community dashboard.
+# =============================================================================
+
+grafana:
+  adminPassword: "change-me-in-prod"   # use a secret in real prod
+
+  # Grafana ingress — access via app.example.com/grafana
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/rewrite-target: /$2
+      # Basic auth to protect Grafana from public access
+      nginx.ingress.kubernetes.io/auth-type: basic
+      nginx.ingress.kubernetes.io/auth-secret: grafana-basic-auth
+      nginx.ingress.kubernetes.io/auth-realm: "Grafana - Authentication Required"
+    hosts:
+      - app.example.com
+    path: /grafana(/|$)(.*)
+
+  # Pre-load the Nginx Ingress dashboard automatically
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: default
+          folder: Nginx
+          type: file
+          options:
+            path: /var/lib/grafana/dashboards/default
+
+  dashboards:
+    default:
+      nginx-ingress:
+        gnetId: 9614      # official Nginx Ingress Grafana dashboard
+        revision: 1
+        datasource: Prometheus
+
+prometheus:
+  prometheusSpec:
+    # Scrape interval — how often Prometheus collects metrics
+    scrapeInterval: 30s
+    evaluationInterval: 30s
+
+    # Retain metrics for 15 days
+    retention: 15d
+
+    # Storage for metrics
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 20Gi
+
+    # Scrape ALL ServiceMonitors in ALL namespaces
+    # This picks up the Nginx Ingress ServiceMonitor automatically
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    serviceMonitorNamespaceSelector: {}
+
+alertmanager:
+  alertmanagerSpec:
+    storage:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 2Gi
+
+  # Alertmanager config — send alerts to Slack
+  # Replace with your Slack webhook URL
+  config:
+    global:
+      slack_api_url: "https://hooks.slack.com/services/<YOUR_WEBHOOK>"
+
+    route:
+      group_by: ["alertname", "namespace"]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 12h
+      receiver: slack-notifications
+
+      # Route 5xx alerts to a specific channel
+      routes:
+        - match:
+            alertname: NginxHigh5xxRate
+          receiver: slack-critical
+          repeat_interval: 5m   # alert every 5 min until resolved
+
+    receivers:
+      - name: slack-notifications
+        slack_configs:
+          - channel: "#k8s-alerts"
+            title: "{{ .GroupLabels.alertname }}"
+            text: "{{ range .Alerts }}{{ .Annotations.description }}{{ end }}"
+
+      - name: slack-critical
+        slack_configs:
+          - channel: "#k8s-critical"
+            title: "🚨 CRITICAL: {{ .GroupLabels.alertname }}"
+            text: "{{ range .Alerts }}{{ .Annotations.description }}{{ end }}"

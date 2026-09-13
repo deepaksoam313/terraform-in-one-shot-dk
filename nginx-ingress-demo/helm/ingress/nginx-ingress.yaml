@@ -1,0 +1,137 @@
+# =============================================================================
+# nginx-ingress.yaml
+# =============================================================================
+# Nginx Ingress routing rules — this is where L7 routing happens.
+#
+# FLOW RECAP:
+#   Internet → ALB (alb-ingress.yaml) → Nginx Controller → THIS FILE → Services
+#
+# THIS FILE DEFINES:
+#   - Which host/path maps to which K8s service
+#   - Rate limiting per IP
+#   - Canary deployment (20% traffic to new version)
+#   - URL rewrites
+#   - Timeouts per route
+#
+# INGRESS CLASS:
+#   spec.ingressClassName: nginx
+#   This tells K8s to use the Nginx Ingress Controller (not ALB controller).
+#   The ALB already forwarded traffic here — now Nginx routes it further.
+#
+# ROUTING RULES:
+#   app.example.com/app1  → app1-service:80
+#   app.example.com/app2  → app2-service:80
+#   app.example.com/api   → api-service:80
+# =============================================================================
+
+---
+# =============================================================================
+# Main Application Ingress
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: app-ingress
+  namespace: default
+  annotations:
+    # Use Nginx Ingress Controller (not ALB)
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+
+    # Rate limiting — max 100 requests/minute per IP
+    # Returns 429 Too Many Requests when exceeded
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+
+    # Timeouts for this ingress
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "10"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+
+    # Enable CORS if your frontend is on a different domain
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "https://app.example.com"
+
+    # Add security headers
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      add_header X-Frame-Options "SAMEORIGIN" always;
+      add_header X-Content-Type-Options "nosniff" always;
+      add_header X-XSS-Protection "1; mode=block" always;
+      add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+spec:
+  ingressClassName: nginx   # use Nginx controller
+
+  rules:
+    - host: app.example.com   # replace with your domain
+      http:
+        paths:
+          # ------------------------------------------------------------------
+          # /app1 → app1-service
+          # ------------------------------------------------------------------
+          # Regex capture group (/app1)(.*) → rewrite-target /$2
+          # So /app1/users → /users inside the app
+          # ------------------------------------------------------------------
+          - path: /app1(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: app1-service
+                port:
+                  number: 80
+
+          # ------------------------------------------------------------------
+          # /app2 → app2-service
+          # ------------------------------------------------------------------
+          - path: /app2(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: app2-service
+                port:
+                  number: 80
+
+          # ------------------------------------------------------------------
+          # /api → api-service
+          # ------------------------------------------------------------------
+          - path: /api(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: api-service
+                port:
+                  number: 80
+
+---
+# =============================================================================
+# Canary Ingress — 20% traffic to new version of app1
+# =============================================================================
+# HOW CANARY WORKS:
+#   - Main ingress handles 80% of /app1 traffic → app1-service (stable)
+#   - This canary ingress handles 20% → app1-canary-service (new version)
+#   - Gradually increase canary-weight to 100% as confidence grows
+#   - If issues found, delete this canary ingress → 100% back to stable
+#
+# USE CASE:
+#   Deploying v2 of app1. Send 20% of users to v2, monitor errors/latency.
+#   If metrics look good, increase to 50%, then 100%.
+# =============================================================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: app1-canary-ingress
+  namespace: default
+  annotations:
+    nginx.ingress.kubernetes.io/canary: "true"
+    nginx.ingress.kubernetes.io/canary-weight: "20"   # 20% traffic to canary
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: app.example.com
+      http:
+        paths:
+          - path: /app1(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: app1-canary-service   # new version service
+                port:
+                  number: 80
