@@ -1,24 +1,35 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
   <component name="ChangeListManager">
     <list default="true" id="805dd35b-d321-436f-8098-86939a6ee288" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/../salarymanagement/src/main/java/salarymanagement_Deepak/salarymanagement/entity/Employee.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../alb.tf" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../ecs.tf" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../main.tf" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../outputs.tf" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../providers.tf" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/../variables.tf" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/../vpc.tf" beforeDir="false" />
+      <change afterPath="$PROJECT_DIR$/GCP_Basics_313/main.tf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/GCP_Basics_313/outputs.tf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/GCP_Basics_313/terraform.tf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/GCP_Basics_313/variables.tf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/terraform-by-kiro/02-variables/locals.tf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/terraform-by-kiro/02-variables/main.tf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/terraform-by-kiro/02-variables/providers.tf" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/terraform-by-kiro/02-variables/terraform.tfvars" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/terraform-by-kiro/02-variables/variables.tf" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
+  <component name="EmbeddingIndexingInfo">
+    <option name="cachedIndexableFilesCount" value="57" />
+  </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="McpProjectServerCommands">
+    <commands />
+    <urls />
   </component>
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 2,
@@ -33,24 +44,61 @@
   "keyToString": {
     "ASKED_MARK_IGNORED_FILES_AS_EXCLUDED": "true",
     "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.MCP Project settings loaded": "true",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
     "RunOnceActivity.git.unshallow": "true",
     "RunOnceActivity.typescript.service.memoryLimit.init": "true",
     "SHELLCHECK.PATH": "/home/deepak.kumar30/.local/share/JetBrains/IntelliJIdea2026.1/Shell Script/shellcheck",
+    "Terraform.Init 02-variables.executor": "Run",
     "codeWithMe.voiceChat.enabledByDefault": "false",
     "git-widget-placeholder": "terraform",
     "kotlin-language-version-configured": "true",
     "last_opened_file_path": "/home/deepak.kumar30/Desktop/terraform-in-one-shot",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.jshint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.jshint": "",
+    "node.js.selected.package.tslint": "(autodetect)",
     "nodejs_package_manager_path": "npm",
+    "onboarding.tips.debug.path": "/home/deepak.kumar30/Desktop/terraform-in-one-shot/GCP_Basics_313/src/Main.java",
     "vue.rearranger.settings.migration": "true"
   }
 }]]></component>
+  <component name="RunManager">
+    <configuration name="Init 02-variables" type="TerraformConfigurationType" factoryName="Terraform init" temporary="true" show_console_on_std_err="false" show_console_on_std_out="false">
+      <option name="allowRunningInParallel" value="false" />
+      <option name="commandType" value="INIT" />
+      <option name="envFilePaths">
+        <list />
+      </option>
+      <option name="envs">
+        <map />
+      </option>
+      <option name="globalOptions" value="" />
+      <option name="passGlobalOptions" value="false" />
+      <option name="passParentEnvs" value="true" />
+      <option name="programArguments" value="" />
+      <option name="programParameters" value="init" />
+      <option name="projectPathOnTarget" />
+      <option name="selectedOptions">
+        <list />
+      </option>
+      <option name="workingDirectory" value="$PROJECT_DIR$/terraform-by-kiro/02-variables" />
+      <method v="2" />
+    </configuration>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Terraform.Init 02-variables" />
+      </list>
+    </recent_temporary>
+  </component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-jdk-30f59d01ecdd-37e91769500f-intellij.indexing.shared.core-IU-261.24374.151" />
-        <option value="bundled-js-predefined-d6986cc7102b-31caf2ab9e3c-JavaScript-IU-261.24374.151" />
+        <option value="bundled-jdk-30f59d01ecdd-a203e0a19954-intellij.indexing.shared.core-IU-262.10315.125" />
+        <option value="bundled-js-predefined-d6986cc7102b-4abd2a77f808-JavaScript-IU-262.10315.125" />
       </set>
     </attachedChunks>
   </component>
@@ -68,5 +116,16 @@
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
+  </component>
+  <component name="XDebuggerManager">
+    <breakpoint-manager>
+      <breakpoints>
+        <line-breakpoint enabled="true" type="java-line">
+          <url>file://$PROJECT_DIR$/GCP_Basics_313/src/Main.java</url>
+          <line>11</line>
+          <option name="timeStamp" value="1" />
+        </line-breakpoint>
+      </breakpoints>
+    </breakpoint-manager>
   </component>
 </project>

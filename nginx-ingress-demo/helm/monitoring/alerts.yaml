@@ -1,0 +1,161 @@
+# =============================================================================
+# alerts.yaml
+# =============================================================================
+# Prometheus alerting rules for Nginx Ingress 5xx errors and latency.
+#
+# HOW PROMETHEUS ALERTS WORK:
+#   1. Prometheus evaluates these rules every 30s (evaluationInterval)
+#   2. If a rule's expression is true for the duration → alert fires
+#   3. Alert goes to Alertmanager
+#   4. Alertmanager routes to Slack/PagerDuty based on labels
+#
+# ALERT SEVERITY LEVELS:
+#   critical → page on-call immediately (PagerDuty)
+#   warning  → notify team (Slack)
+#   info     → FYI notification
+#
+# DEPLOY:
+#   kubectl apply -f alerts.yaml
+# =============================================================================
+
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: nginx-ingress-alerts
+  namespace: monitoring
+  labels:
+    # This label makes Prometheus Operator pick up this rule
+    prometheus: kube-prometheus
+    role: alert-rules
+spec:
+  groups:
+    - name: nginx-ingress-5xx
+      interval: 30s
+      rules:
+
+        # ------------------------------------------------------------------
+        # Alert 1: High 5xx Error Rate
+        # ------------------------------------------------------------------
+        # Fires when more than 5% of requests return 5xx in last 5 minutes.
+        # Formula: (5xx requests / total requests) * 100 > 5
+        # ------------------------------------------------------------------
+        - alert: NginxHigh5xxRate
+          expr: |
+            (
+              sum(rate(nginx_ingress_controller_requests{status=~"5.."}[5m])) by (ingress, namespace)
+              /
+              sum(rate(nginx_ingress_controller_requests[5m])) by (ingress, namespace)
+            ) * 100 > 5
+          for: 2m   # must be true for 2 minutes before alerting
+          labels:
+            severity: critical
+          annotations:
+            summary: "High 5xx error rate on {{ $labels.ingress }}"
+            description: |
+              Ingress {{ $labels.ingress }} in namespace {{ $labels.namespace }}
+              has {{ $value | printf "%.2f" }}% 5xx error rate over last 5 minutes.
+              Check pod logs: kubectl logs -n {{ $labels.namespace }} -l app={{ $labels.ingress }}
+
+        # ------------------------------------------------------------------
+        # Alert 2: High Latency (p99 > 2 seconds)
+        # ------------------------------------------------------------------
+        # Fires when 99th percentile response time exceeds 2 seconds.
+        # p99 means 99% of requests are faster than this value.
+        # ------------------------------------------------------------------
+        - alert: NginxHighLatency
+          expr: |
+            histogram_quantile(0.99,
+              sum(rate(nginx_ingress_controller_request_duration_seconds_bucket[5m])) by (le, ingress)
+            ) > 2
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High latency on {{ $labels.ingress }}"
+            description: |
+              Ingress {{ $labels.ingress }} p99 latency is {{ $value | printf "%.2f" }}s.
+              Expected < 2s. Check upstream pod performance.
+
+        # ------------------------------------------------------------------
+        # Alert 3: Nginx Pod Down
+        # ------------------------------------------------------------------
+        # Fires when fewer than 2 Nginx Ingress pods are running.
+        # We always want at least 2 for HA.
+        # ------------------------------------------------------------------
+        - alert: NginxIngressPodDown
+          expr: |
+            kube_deployment_status_replicas_available{
+              deployment="ingress-nginx-controller",
+              namespace="ingress-nginx"
+            } < 2
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Nginx Ingress pods are down"
+            description: |
+              Only {{ $value }} Nginx Ingress pods are running. Expected 2+.
+              Check: kubectl get pods -n ingress-nginx
+
+        # ------------------------------------------------------------------
+        # Alert 4: 503 Spike (no endpoints)
+        # ------------------------------------------------------------------
+        # 503 specifically means no healthy pods for a service.
+        # This usually means all pods crashed or are in CrashLoopBackOff.
+        # ------------------------------------------------------------------
+        - alert: NginxHigh503Rate
+          expr: |
+            sum(rate(nginx_ingress_controller_requests{status="503"}[2m])) by (ingress) > 1
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "503 errors on {{ $labels.ingress }} — no healthy pods"
+            description: |
+              Getting {{ $value | printf "%.2f" }} 503/s on {{ $labels.ingress }}.
+              503 = no healthy endpoints. Check:
+              kubectl get endpoints -n default
+              kubectl get pods -n default
+
+        # ------------------------------------------------------------------
+        # Alert 6: 500 Internal Server Error Spike
+        # ------------------------------------------------------------------
+        # 500 originates FROM the app pod itself (unhandled exception/bug).
+        # Different from 502 — pod is running but returning errors.
+        # Spikes usually mean a bad deployment was pushed.
+        # ------------------------------------------------------------------
+        - alert: NginxHigh500Rate
+          expr: |
+            sum(rate(nginx_ingress_controller_requests{status="500"}[2m])) by (ingress) > 1
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "500 errors on {{ $labels.ingress }} — app bug"
+            description: |
+              Getting {{ $value | printf "%.2f" }} 500/s on {{ $labels.ingress }}.
+              500 = app code error. Check app pod logs first:
+              kubectl logs -n default -l app={{ $labels.ingress }} --tail=100
+              kubectl rollout history deployment/{{ $labels.ingress }}
+
+        # ------------------------------------------------------------------
+        # Alert 7: 505 HTTP Version Not Supported
+        # ------------------------------------------------------------------
+        # 505 is returned by Nginx itself — request never hits the pod.
+        # Usually means a bad client or misconfigured upstream proxy.
+        # Low threshold — even a few 505s is unusual and worth investigating.
+        # ------------------------------------------------------------------
+        - alert: Nginx505Detected
+          expr: |
+            sum(rate(nginx_ingress_controller_requests{status="505"}[5m])) by (ingress) > 0
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: "505 HTTP Version errors on {{ $labels.ingress }}"
+            description: |
+              Getting 505 errors on {{ $labels.ingress }}.
+              505 = Nginx rejected request due to unsupported HTTP version.
+              Check Nginx logs for the client IP and HTTP version used:
+              kubectl logs -n ingress-nginx -l app.kubernetes.io/name=ingress-nginx | grep 505
+              Consider blocking the offending client IP in WAF.

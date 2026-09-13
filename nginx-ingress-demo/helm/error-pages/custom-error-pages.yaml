@@ -1,0 +1,288 @@
+# =============================================================================
+# custom-error-pages.yaml
+# =============================================================================
+# Custom error pages for 5xx errors served by Nginx default backend.
+#
+# HOW 5XX ERROR HANDLING WORKS IN THIS SETUP:
+#
+#   Normal flow:
+#     Request → ALB → Nginx → App Pod → 200 OK
+#
+#   500 Internal Server Error (app bug/crash inside pod):
+#     Request → ALB → Nginx → App Pod → Pod returns 500 (unhandled exception)
+#     → Nginx sees 500 → forwards to default backend → custom error page
+#     NOTE: 500 originates FROM the app itself, not from Nginx/proxy layer
+#
+#   502 Bad Gateway (pod crashed / bad response):
+#     Request → ALB → Nginx → App Pod (crashed) → Nginx gets bad response
+#     → Nginx sees 502 → forwards to default backend → custom error page
+#
+#   503 Service Unavailable (no healthy pods):
+#     Request → ALB → Nginx → Service (no endpoints) → Nginx gets 503
+#     → forwards to default backend → custom error page
+#
+#   504 Gateway Timeout (app too slow):
+#     Request → ALB → Nginx → App Pod (slow) → timeout hit
+#     → Nginx returns 504 → forwards to default backend → custom error page
+#
+#   505 HTTP Version Not Supported:
+#     Request → ALB → Nginx → Nginx rejects unsupported HTTP version
+#     → Nginx itself returns 505 (never reaches the pod)
+#     NOTE: 505 is returned BY Nginx, not by the upstream app
+#
+# KEY DIFFERENCE — WHERE EACH ERROR ORIGINATES:
+#   500 → inside your app pod (application code bug)
+#   502 → Nginx proxy layer (pod gave bad/no response)
+#   503 → Nginx proxy layer (no pods available)
+#   504 → Nginx proxy layer (pod too slow)
+#   505 → Nginx itself (bad HTTP version in request)
+#
+# THE DEFAULT BACKEND:
+#   Nginx Ingress has a "default backend" — a fallback service.
+#   When custom-http-errors is set (in nginx-ingress-values.yaml),
+#   Nginx forwards these error responses to this backend.
+#   We deploy a custom Nginx here that serves branded error pages.
+#
+# DEPLOY:
+#   kubectl apply -f custom-error-pages.yaml
+# =============================================================================
+
+---
+# ConfigMap with custom HTML error pages
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: custom-error-pages
+  namespace: ingress-nginx
+data:
+  # ------------------------------------------------------------------
+  # 500 Internal Server Error
+  # ------------------------------------------------------------------
+  # Cause: Unhandled exception / bug inside the application code
+  # Origin: The app pod itself returns 500 (not Nginx)
+  # Fix: Check app logs for stack traces, fix the application bug
+  # ------------------------------------------------------------------
+  500.html: |
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>500 - Internal Server Error</title>
+      <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 80px; background: #f5f5f5; }
+        .box { background: white; padding: 40px; border-radius: 8px; display: inline-block; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #c62828; }
+        p { color: #666; }
+        .code { font-size: 72px; font-weight: bold; color: #c62828; }
+      </style>
+    </head>
+    <body>
+      <div class="box">
+        <div class="code">500</div>
+        <h1>Internal Server Error</h1>
+        <p>Something went wrong on our end. Our team has been notified.</p>
+        <p>Please try again later or contact support if the issue persists.</p>
+      </div>
+    </body>
+    </html>
+
+  # ------------------------------------------------------------------
+  # 502 Bad Gateway
+  # ------------------------------------------------------------------
+  # Cause: Upstream pod returned invalid response or crashed mid-request
+  # Origin: Nginx proxy layer (pod gave bad/no HTTP response)
+  # Fix: Check pod logs, check if pod is running
+  # ------------------------------------------------------------------
+  502.html: |
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>502 - Bad Gateway</title>
+      <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 80px; background: #f5f5f5; }
+        .box { background: white; padding: 40px; border-radius: 8px; display: inline-block; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #e53935; }
+        p { color: #666; }
+        .code { font-size: 72px; font-weight: bold; color: #e53935; }
+      </style>
+    </head>
+    <body>
+      <div class="box">
+        <div class="code">502</div>
+        <h1>Bad Gateway</h1>
+        <p>The server received an invalid response from the upstream service.</p>
+        <p>Our team has been notified. Please try again in a moment.</p>
+      </div>
+    </body>
+    </html>
+
+  # ------------------------------------------------------------------
+  # 503 Service Unavailable
+  # ------------------------------------------------------------------
+  # Cause: No healthy pods available (all crashed, scaling up, deploying)
+  # Fix: Check deployment status, check pod events
+  # ------------------------------------------------------------------
+  503.html: |
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>503 - Service Unavailable</title>
+      <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 80px; background: #f5f5f5; }
+        .box { background: white; padding: 40px; border-radius: 8px; display: inline-block; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #fb8c00; }
+        p { color: #666; }
+        .code { font-size: 72px; font-weight: bold; color: #fb8c00; }
+      </style>
+    </head>
+    <body>
+      <div class="box">
+        <div class="code">503</div>
+        <h1>Service Unavailable</h1>
+        <p>The service is temporarily unavailable. We are working to restore it.</p>
+        <p>Please try again in a few minutes.</p>
+      </div>
+    </body>
+    </html>
+
+  # ------------------------------------------------------------------
+  # 504 Gateway Timeout
+  # ------------------------------------------------------------------
+  # Cause: Upstream pod took too long to respond (slow DB query, high load)
+  # Fix: Check app performance, increase timeout annotation, scale up
+  # ------------------------------------------------------------------
+  504.html: |
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>504 - Gateway Timeout</title>
+      <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 80px; background: #f5f5f5; }
+        .box { background: white; padding: 40px; border-radius: 8px; display: inline-block; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #8e24aa; }
+        p { color: #666; }
+        .code { font-size: 72px; font-weight: bold; color: #8e24aa; }
+      </style>
+    </head>
+    <body>
+      <div class="box">
+        <div class="code">504</div>
+        <h1>Gateway Timeout</h1>
+        <p>The request took too long to process.</p>
+        <p>Please try again. If the problem persists, contact support.</p>
+      </div>
+    </body>
+    </html>
+
+  # ------------------------------------------------------------------
+  # 505 HTTP Version Not Supported
+  # ------------------------------------------------------------------
+  # Cause: Client sent a request using an HTTP version Nginx doesn't support
+  # Origin: Nginx itself returns this — request never reaches the pod
+  # Common scenario: client forces HTTP/3 or a very old HTTP/0.9 request
+  # Fix: Usually a client-side issue. Check if a proxy/tool is sending bad requests.
+  #      Ensure ALB and Nginx both support the HTTP versions your clients use.
+  # ------------------------------------------------------------------
+  505.html: |
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>505 - HTTP Version Not Supported</title>
+      <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 80px; background: #f5f5f5; }
+        .box { background: white; padding: 40px; border-radius: 8px; display: inline-block; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #37474f; }
+        p { color: #666; }
+        .code { font-size: 72px; font-weight: bold; color: #37474f; }
+      </style>
+    </head>
+    <body>
+      <div class="box">
+        <div class="code">505</div>
+        <h1>HTTP Version Not Supported</h1>
+        <p>The HTTP protocol version used in the request is not supported.</p>
+        <p>Please ensure you are using HTTP/1.1 or HTTP/2.</p>
+      </div>
+    </body>
+    </html>
+
+  # Nginx config to serve error pages based on URI
+  default.conf: |
+    server {
+      listen 8080;
+
+      location / {
+        # Nginx sets $request_uri to /502, /503, /504 when forwarding errors
+        root /usr/share/nginx/html;
+        try_files $uri $uri.html =404;
+      }
+    }
+
+---
+# Deployment for custom error page server
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: custom-error-pages
+  namespace: ingress-nginx
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: custom-error-pages
+  template:
+    metadata:
+      labels:
+        app: custom-error-pages
+    spec:
+      containers:
+        - name: error-pages
+          image: nginx:alpine
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: error-pages
+              mountPath: /usr/share/nginx/html
+            - name: nginx-config
+              mountPath: /etc/nginx/conf.d
+          resources:
+            requests:
+              cpu: 10m
+              memory: 20Mi
+            limits:
+              cpu: 50m
+              memory: 64Mi
+      volumes:
+        - name: error-pages
+          configMap:
+            name: custom-error-pages
+            items:
+              - key: 500.html
+                path: 500.html
+              - key: 502.html
+                path: 502.html
+              - key: 503.html
+                path: 503.html
+              - key: 504.html
+                path: 504.html
+              - key: 505.html
+                path: 505.html
+        - name: nginx-config
+          configMap:
+            name: custom-error-pages
+            items:
+              - key: default.conf
+                path: default.conf
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: custom-error-pages
+  namespace: ingress-nginx
+spec:
+  selector:
+    app: custom-error-pages
+  ports:
+    - port: 80
+      targetPort: 8080
+  type: ClusterIP

@@ -1,0 +1,252 @@
+# =============================================================================
+# app1.yaml
+# =============================================================================
+# Sample application 1 — Nginx serving a simple HTML page.
+#
+# COMPONENTS:
+#   - Deployment: runs 2 pods with the app container
+#   - Service: exposes pods internally on port 80
+#   - HPA: auto-scales pods based on CPU
+#
+# WHY 2 REPLICAS?
+#   If one pod crashes or node goes down, the other keeps serving traffic.
+#   This is the minimum for production.
+#
+# READINESS PROBE:
+#   K8s checks /healthz before sending traffic to a pod.
+#   If probe fails, pod is removed from Service endpoints.
+#   This prevents 502 errors from unready pods.
+#
+# LIVENESS PROBE:
+#   K8s checks /healthz periodically while pod is running.
+#   If probe fails, K8s restarts the pod.
+#   This auto-recovers from hung/deadlocked apps.
+# =============================================================================
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app1
+  namespace: default
+  labels:
+    app: app1
+    version: stable
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: app1
+      version: stable
+  strategy:
+    # RollingUpdate: replace pods one by one — zero downtime deployments
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1        # create 1 extra pod during update
+      maxUnavailable: 0  # never take a pod down before new one is ready
+  template:
+    metadata:
+      labels:
+        app: app1
+        version: stable
+    spec:
+      # Spread pods across different nodes for HA
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values: [app1]
+                topologyKey: kubernetes.io/hostname
+
+      containers:
+        - name: app1
+          image: nginx:alpine
+          ports:
+            - containerPort: 80
+
+          # Custom nginx config to serve app1 content
+          volumeMounts:
+            - name: html
+              mountPath: /usr/share/nginx/html
+
+          # ----------------------------------------------------------------
+          # Readiness Probe
+          # ----------------------------------------------------------------
+          # Pod only receives traffic when this passes.
+          # Prevents 502 errors during pod startup.
+          # ----------------------------------------------------------------
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5   # wait 5s after container starts
+            periodSeconds: 10        # check every 10s
+            failureThreshold: 3      # fail 3 times before marking unready
+
+          # ----------------------------------------------------------------
+          # Liveness Probe
+          # ----------------------------------------------------------------
+          # Restarts pod if app becomes unresponsive.
+          # ----------------------------------------------------------------
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+
+      volumes:
+        - name: html
+          configMap:
+            name: app1-html
+
+---
+# Simple HTML page for app1
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app1-html
+  namespace: default
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial; text-align: center; padding: 50px;">
+      <h1>App 1 - Stable Version</h1>
+      <p>Served by pod: $hostname</p>
+    </body>
+    </html>
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app1-service
+  namespace: default
+spec:
+  selector:
+    app: app1
+    version: stable
+  ports:
+    - port: 80
+      targetPort: 80
+  type: ClusterIP   # internal only — Nginx Ingress routes to this
+
+---
+# =============================================================================
+# Canary Deployment — new version of app1
+# =============================================================================
+# This is the v2 deployment that receives 20% of traffic via canary ingress.
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app1-canary
+  namespace: default
+  labels:
+    app: app1
+    version: canary
+spec:
+  replicas: 1   # fewer replicas since it only gets 20% traffic
+  selector:
+    matchLabels:
+      app: app1
+      version: canary
+  template:
+    metadata:
+      labels:
+        app: app1
+        version: canary
+    spec:
+      containers:
+        - name: app1
+          image: nginx:alpine
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: html
+              mountPath: /usr/share/nginx/html
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+      volumes:
+        - name: html
+          configMap:
+            name: app1-canary-html
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app1-canary-html
+  namespace: default
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial; text-align: center; padding: 50px; background: #e8f5e9;">
+      <h1>App 1 - Canary Version (v2)</h1>
+      <p>You are on the NEW version!</p>
+    </body>
+    </html>
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app1-canary-service
+  namespace: default
+spec:
+  selector:
+    app: app1
+    version: canary
+  ports:
+    - port: 80
+      targetPort: 80
+  type: ClusterIP
+
+---
+# HPA — auto-scale app1 pods based on CPU
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: app1-hpa
+  namespace: default
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: app1
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

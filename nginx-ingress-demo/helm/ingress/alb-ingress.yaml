@@ -1,0 +1,99 @@
+# =============================================================================
+# alb-ingress.yaml
+# =============================================================================
+# This Ingress resource tells AWS LBC to create an ALB.
+#
+# HOW IT WORKS:
+#   1. You apply this file: kubectl apply -f alb-ingress.yaml
+#   2. AWS LBC sees this Ingress with kubernetes.io/ingress.class: alb
+#   3. AWS LBC calls AWS APIs to create an ALB in public subnets
+#   4. ALB is configured with HTTPS listener (port 443) using ACM cert
+#   5. HTTP (port 80) is redirected to HTTPS automatically
+#   6. WAF is attached to the ALB
+#   7. All traffic is forwarded to Nginx Ingress Controller (NodePort 32080)
+#
+# IMPORTANT ANNOTATIONS EXPLAINED:
+#   alb.ingress.kubernetes.io/scheme: internet-facing
+#     → ALB is public (in public subnets), accessible from internet
+#
+#   alb.ingress.kubernetes.io/target-type: instance
+#     → ALB forwards to EC2 instances (nodes) on NodePort
+#     → Alternative is "ip" which forwards directly to pod IPs
+#
+#   alb.ingress.kubernetes.io/certificate-arn
+#     → ACM cert for HTTPS. Get from: terraform output acm_certificate_arn
+#
+#   alb.ingress.kubernetes.io/wafv2-acl-arn
+#     → Attaches WAF to ALB. Get from: terraform output waf_arn
+#
+#   alb.ingress.kubernetes.io/ssl-redirect: "443"
+#     → Redirects HTTP:80 → HTTPS:443 automatically
+#
+# AFTER APPLYING:
+#   kubectl get ingress -n ingress-nginx alb-to-nginx
+#   → Shows ALB DNS name in ADDRESS column (takes ~2 minutes)
+# =============================================================================
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: alb-to-nginx
+  namespace: ingress-nginx
+  annotations:
+    # Use AWS LBC to create ALB (not the default nginx ingress class)
+    kubernetes.io/ingress.class: alb
+
+    # internet-facing = public ALB in public subnets
+    alb.ingress.kubernetes.io/scheme: internet-facing
+
+    # Forward to EC2 node instances on NodePort
+    alb.ingress.kubernetes.io/target-type: instance
+
+    # HTTPS listener with ACM certificate
+    # Replace with: terraform output acm_certificate_arn
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:<REGION>:<ACCOUNT_ID>:certificate/<CERT_ID>
+
+    # Listen on both HTTP and HTTPS
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+
+    # Redirect all HTTP traffic to HTTPS
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+
+    # Attach WAF to ALB
+    # Replace with: terraform output waf_arn
+    alb.ingress.kubernetes.io/wafv2-acl-arn: arn:aws:wafv2:<REGION>:<ACCOUNT_ID>:regional/webacl/nginx-ingress-demo-waf/<WAF_ID>
+
+    # Enable ALB access logs to S3
+    # Replace bucket name with: terraform output alb_logs_bucket
+    alb.ingress.kubernetes.io/load-balancer-attributes: |
+      access_logs.s3.enabled=true,
+      access_logs.s3.bucket=nginx-ingress-demo-alb-logs-<ACCOUNT_ID>,
+      access_logs.s3.prefix=alb-logs,
+      idle_timeout.timeout_seconds=60,
+      routing.http2.enabled=true
+
+    # Health check — ALB checks Nginx /healthz to know if it's healthy
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    alb.ingress.kubernetes.io/healthcheck-port: "32080"
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "15"
+    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: "5"
+    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: "3"
+
+    # Security group for ALB — allow 80 and 443 from internet
+    alb.ingress.kubernetes.io/inbound-cidrs: 0.0.0.0/0
+
+spec:
+  rules:
+    # Forward ALL traffic (any host, any path) to Nginx Ingress Controller
+    # Nginx will then apply its own routing rules (nginx-ingress.yaml)
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                # This is the Nginx Ingress Controller service (NodePort)
+                name: ingress-nginx-controller
+                port:
+                  number: 80
